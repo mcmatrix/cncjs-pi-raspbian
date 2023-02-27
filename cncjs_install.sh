@@ -15,8 +15,8 @@
 #   Builds from raspi-config https://github.com/RPi-Distro/raspi-config  (MIT license)
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 SCRIPT_TITLE="CNCjs Installer"
-SCRIPT_VERSION=1.4.0
-SCRIPT_DATE=$(date -I --date '2022/05/29')
+SCRIPT_VERSION=1.4.4
+SCRIPT_DATE=$(date -I --date '2023/02/10')
 SCRIPT_AUTHOR="Austin St. Aubin"
 SCRIPT_TITLE_FULL="${SCRIPT_TITLE} v${SCRIPT_VERSION}($(date -I -d ${SCRIPT_DATE})) by: ${SCRIPT_AUTHOR}"
 # ===========================================================================
@@ -72,11 +72,11 @@ COL_CYAN='\e[1;36m'
 COL_WHITE='\e[1;37m'
 
 # Message
-PASS="[${COL_GREEN}✓${COL_NC}]"
-FAIL="[${COL_RED}✗${COL_NC}]"
-WARN="[${COL_YELLOW}"'!'"${COL_NC}]"
-INFO="[${COL_CYAN}i${COL_NC}]"
-QSTN="[${COL_MAGENTA}?${COL_NC}]"
+PASS="${COL_NC}[${COL_GREEN}✓${COL_NC}]"
+FAIL="${COL_NC}[${COL_RED}✗${COL_NC}]"
+WARN="${COL_NC}[${COL_YELLOW}"'!'"${COL_NC}]"
+INFO="${COL_NC}[${COL_CYAN}i${COL_NC}]"
+QSTN="${COL_NC}[${COL_MAGENTA}?${COL_NC}]"
 
 
 # ----------------------------------------------------------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ QSTN="[${COL_MAGENTA}?${COL_NC}]"
 # https://unix.stackexchange.com/questions/225179/display-spinner-while-waiting-for-some-process-to-finish
 # https://wiki.tcl-lang.org/page/Text+Spinner
 function spinner() {
-	# make sure we use non-unicode character type locale 
+	# make sure we use non-unicode character type local
 	# (that way it works for any locale as long as the font supports the characters)
 	local LC_CTYPE=C
 	
@@ -443,7 +443,11 @@ fi
 detected_os_id=$(cat /etc/*release | grep '^ID=' | cut -d '=' -f2- | tr -d '"')
 detected_os_id_version=$(cat /etc/*release | grep '^VERSION_ID=' | cut -d '=' -f2- | tr -d '"')
 msg i "Detected HW: $(tr -d '\0' </proc/device-tree/model)"
-msg i "Detected OS: [ $detected_os_id | $detected_os_id_version | $(${COMPATIBLE_OS_GUI} && echo 'Compatible GUI' || echo 'No GUI') ]"
+msg i "Detected OS: [\
+  $([[ "$detected_os_id" =~ $COMPATIBLE_OS_ID ]] && echo -e ${PASS}${COL_NC} || echo -e ${FAIL}${COL_NC}) $detected_os_id  |\
+  $([[ $detected_os_id_version -ge $COMPATIBLE_OS_ID_VERSION ]] && echo -e ${PASS}${COL_NC} || echo -e ${FAIL}${COL_NC}) $detected_os_id_version  |\
+  $(${COMPATIBLE_OS_GUI} && echo -e ${PASS}${COL_NC} 'Compatible GUI' || echo -e ${WARN}${COL_NC} 'No GUI (or) Incompatable GUI')  \
+]"
 
 # Log OS Build Info
 echo "Raspberry Pi OS Image Version" >&4
@@ -477,8 +481,8 @@ if [[ ${SYSTEM_CHECK} == true ]] && [[ ${main_list_entry_selected[*]} =~ "A00" ]
 	if [[ "$detected_os_id" =~ $COMPATIBLE_OS_ID ]] && [[ $detected_os_id_version -ge $COMPATIBLE_OS_ID_VERSION ]]; then
 		msg p "Detected OS is compatable with this install script."
 	else
-		msg p "Detected OS is NOT compatable with this install script!"
-		msg i "This installer is designed for the [Raspberry Pi](https://www.raspberrypi.org)"
+		msg x "Detected OS is NOT compatable with this install script!"
+		msg i "This installer is designed for the [Raspberry Pi](https://www.raspberrypi.org) | ${COMPATIBLE_OS_ID} >= v${COMPATIBLE_OS_ID_VERSION}"
 		exit 1;
 	fi
 else
@@ -522,7 +526,7 @@ if [[ ${main_list_entry_selected[*]} =~ 'A12' ]] || [[ ${main_list_entry_selecte
 			# https://github.com/nodesource/distributions#rpminstall
 			msg % "Installing Node.js v10.x Package Source" \
 				'curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -'
-			msg % "Installing Node.js v10.x via Package Manager" \
+			msg % "Installing Node.js via Package Manager" \
 				'sudo apt-get install -qq -y nodejs'
 		else
 			# Debain
@@ -562,7 +566,7 @@ if [[ ${main_list_entry_selected[*]} =~ 'A03' ]]; then
 	
 	# Get Installed Version of CNCjs
 	if [[ $(command -v cncjs) ]]; then
-		CNCJS_VERSION_INSTALLED=$(cncjs -V)  # $(npm view cncjs version)
+		CNCJS_VERSION_INSTALLED=$(npm view cncjs version)  # cncjs --version
 	else
 		CNCJS_VERSION_INSTALLED=0
 	fi
@@ -752,7 +756,7 @@ User=${USER}
 WorkingDirectory=${HOME}
 
 # Capabilities & Security Settings
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_BIND_SERVICE  # Commment this out if you want CNCjs to be able to run "sudo" commands.
 # ProtectHome=true
 ProtectSystem=full
 
@@ -1044,6 +1048,9 @@ fi
 # ----------------------------------------------------------------------------------------------------------------------------------
 if [[ ${main_list_entry_selected[*]} =~ 'A08' ]]; then
 	
+	# Note to users regarding camera hardware issues.
+	msg i "NOTE: If you happen to experience camera issues, try reducing frame rate and/or resolution. https://github.com/pikvm/ustreamer/issues/14#issuecomment-583172852"
+	
 	# uStreamer --------------------------------------------------------------------------------------------------------------------
 	if [[ ${streamer_list_entry_selected[*]} =~ 'uStreamer' ]]; then
 		msg h "uStreamer Setup"
@@ -1228,7 +1235,7 @@ EOF
 			# Add Path to Camera Devices based on selection
 			if [[ ${whiptail_menu_entry_selected[*]} =~ 'Multiple' ]]; then
 				# Multiple Device by ID
-				camera_device="/dev/v4l/by-id/${list_entry_selected}"
+				camera_device="/dev/v4l/by-id/${entry_selected}"
 			else 
 				# Single Device by ID
 				camera_device="${list_entry_selected}"
@@ -1530,7 +1537,7 @@ EOF
 		# Add Path to Camera Devices based on selection
 		if [[ ${whiptail_menu_entry_selected[*]} =~ 'Multiple' ]]; then
 			# Multiple Device by ID
-			camera_device="/dev/v4l/by-id/${list_entry_selected}"
+			camera_device="/dev/v4l/by-id/${entry_selected}"
 		else 
 			# Single Device by ID
 			camera_device="${list_entry_selected}"
